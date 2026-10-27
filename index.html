@@ -20,6 +20,7 @@
     .btn-action {
       transition: all 0.15s ease;
       user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
     .btn-action:active { transform: scale(0.95); }
   </style>
@@ -67,10 +68,10 @@
     <canvas id="gameCanvas" width="448" height="496" class="rounded-lg max-w-full h-auto block"></canvas>
 
     <!-- Overlay Screen for Game Start / GameOver / Pause -->
-    <div id="gameOverlay" class="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center p-6 text-center z-10 transition-opacity duration-300">
+    <div id="gameOverlay" class="absolute inset-0 bg-black/85 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center p-6 text-center z-20 transition-opacity duration-300">
       <h1 id="overlayTitle" class="text-2xl sm:text-3xl text-yellow-300 neon-text-yellow mb-4 leading-relaxed">NEON PAC-MAN</h1>
       <p id="overlaySub" class="text-xs text-cyan-300 mb-6 leading-loose max-w-xs">Use WASD, Arrow Keys, or Touch D-Pad to Navigate</p>
-      <button id="startBtn" onclick="startGame()" class="btn-action bg-yellow-400 text-black font-bold px-6 py-3 rounded-xl shadow-lg shadow-yellow-400/30 text-sm hover:bg-yellow-300">
+      <button id="startBtn" class="btn-action bg-yellow-400 text-black font-bold px-6 py-3 rounded-xl shadow-lg shadow-yellow-400/30 text-sm hover:bg-yellow-300 active:bg-yellow-500 cursor-pointer">
         PRESS START
       </button>
     </div>
@@ -78,11 +79,11 @@
 
   <!-- Mobile Touch D-Pad Controls -->
   <div class="mt-4 sm:hidden flex flex-col items-center gap-2">
-    <button onclick="handleMobileMove('UP')" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">▲</button>
+    <button id="btnUp" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">▲</button>
     <div class="flex gap-6">
-      <button onclick="handleMobileMove('LEFT')" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">◀</button>
-      <button onclick="handleMobileMove('DOWN')" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">▼</button>
-      <button onclick="handleMobileMove('RIGHT')" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">▶</button>
+      <button id="btnLeft" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">◀</button>
+      <button id="btnDown" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">▼</button>
+      <button id="btnRight" class="btn-action w-12 h-12 bg-cyan-900/50 border border-cyan-500/50 rounded-xl flex items-center justify-center text-cyan-300 text-lg">▶</button>
     </div>
   </div>
 
@@ -101,6 +102,9 @@
         if (!this.ctx) {
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
         }
       }
       playChirp(freq1, freq2, duration, type='square', vol=0.1) {
@@ -194,6 +198,7 @@
     let pelletsEaten = 0;
     let frightenedTimer = 0;
     let frightenedDuration = 220; // Fast ~3.5 sec power pellet effect
+    let currentAction = null;
 
     document.getElementById('highScore').innerText = highScore;
 
@@ -209,7 +214,7 @@
     const pacman = {
       x: 13.5 * TILE_SIZE,
       y: 23 * TILE_SIZE,
-      baseSpeed: 2.8, // High Base Speed
+      baseSpeed: 2.8,
       dir: DIRS.RIGHT,
       nextDir: DIRS.RIGHT,
       mouthAngle: 0.2,
@@ -229,7 +234,7 @@
         this.color = color;
         this.scatterX = scatterX;
         this.scatterY = scatterY;
-        this.baseSpeed = 2.4; // High Ghost Base Speed
+        this.baseSpeed = 2.4;
         this.reset();
       }
       reset() {
@@ -244,7 +249,6 @@
         if (this.isFrightened) speed *= 0.6;
         if (this.isEaten) speed *= 2.0;
 
-        // Snapping to tile center for sharp turn decisions
         const currentTileX = Math.floor((this.x + TILE_SIZE / 2) / TILE_SIZE);
         const currentTileY = Math.floor((this.y + TILE_SIZE / 2) / TILE_SIZE);
         const tileCenterX = currentTileX * TILE_SIZE + TILE_SIZE / 2;
@@ -261,7 +265,6 @@
         this.x += this.dir.x * speed;
         this.y += this.dir.y * speed;
 
-        // Screen Warp Tunnel
         if (this.x < -TILE_SIZE / 2) this.x = canvas.width - TILE_SIZE / 2;
         if (this.x > canvas.width - TILE_SIZE / 2) this.x = -TILE_SIZE / 2;
       }
@@ -272,7 +275,7 @@
 
         for (let key in DIRS) {
           const d = DIRS[key];
-          if (d.x === oppositeDir.x && d.y === oppositeDir.y) continue; // Prevent direct 180 backtrack
+          if (d.x === oppositeDir.x && d.y === oppositeDir.y) continue;
 
           const nextTileX = tileX + d.x;
           const nextTileY = tileY + d.y;
@@ -288,12 +291,10 @@
         }
 
         if (this.isFrightened) {
-          // Random direction when frightened
           this.dir = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
           return;
         }
 
-        // Target Determination based on AI Personalities
         let targetX = pacman.x;
         let targetY = pacman.y;
 
@@ -314,7 +315,6 @@
           }
         }
 
-        // Pick direction that minimizes distance to target
         let bestDir = possibleDirs[0];
         let minDistance = Infinity;
 
@@ -346,10 +346,8 @@
         }
         ctx.shadowBlur = 10;
 
-        // Ghost Body & Skirt
         ctx.arc(px, py - 2, r, Math.PI, 0, false);
         ctx.lineTo(px + r, py + r);
-        // Wavy skirt animation
         ctx.lineTo(px + r / 2, py + r - 3);
         ctx.lineTo(px, py + r);
         ctx.lineTo(px - r / 2, py + r - 3);
@@ -357,14 +355,12 @@
         ctx.closePath();
         ctx.fill();
 
-        // Eyes
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.arc(px - 3, py - 3, 3, 0, Math.PI * 2);
         ctx.arc(px + 3, py - 3, 3, 0, Math.PI * 2);
         ctx.fill();
 
-        // Pupils looking in direction
         ctx.fillStyle = '#00f';
         ctx.beginPath();
         ctx.arc(px - 3 + this.dir.x * 1.5, py - 3 + this.dir.y * 1.5, 1.5, 0, Math.PI * 2);
@@ -382,18 +378,16 @@
       new Ghost('Clyde', '#ffaa00', 0, 31)
     ];
 
-    // Helper: Check Map Collision
     function isWalkable(tileX, tileY, isGhost = false) {
       if (tileY < 0 || tileY >= MAP_LAYOUT.length || tileX < 0 || tileX >= MAP_LAYOUT[0].length) {
-        return true; // Allow warp tunnels
+        return true;
       }
       const val = grid[tileY][tileX];
       if (val === 1) return false;
-      if (val === 4 && !isGhost) return false; // Ghost door restriction for Pacman
+      if (val === 4 && !isGhost) return false;
       return true;
     }
 
-    // Initialize Map Data
     function initMap() {
       grid = JSON.parse(JSON.stringify(MAP_LAYOUT));
       totalPellets = 0;
@@ -408,7 +402,6 @@
       }
     }
 
-    // UI Updates
     function updateLivesDisplay() {
       const container = document.getElementById('lives');
       container.innerHTML = '';
@@ -443,7 +436,7 @@
       document.getElementById('overlaySub').innerText = sub;
       const btn = document.getElementById('startBtn');
       btn.innerText = btnText;
-      btn.onclick = action;
+      currentAction = action;
       document.getElementById('gameOverlay').classList.remove('opacity-0', 'pointer-events-none');
     }
 
@@ -451,7 +444,15 @@
       document.getElementById('gameOverlay').classList.add('opacity-0', 'pointer-events-none');
     }
 
-    // Start / Restart Game
+    function triggerStart() {
+      sound.init();
+      if (currentAction) {
+        currentAction();
+      } else {
+        startGame();
+      }
+    }
+
     function startGame() {
       sound.init();
       score = 0;
@@ -472,7 +473,34 @@
       frightenedTimer = 0;
     }
 
-    // Core Controls & Keyboard Listening
+    // Attach robust direct event listeners for touch & click
+    const startBtn = document.getElementById('startBtn');
+    const overlay = document.getElementById('gameOverlay');
+
+    startBtn.addEventListener('click', (e) => { e.stopPropagation(); triggerStart(); });
+    startBtn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); triggerStart(); });
+    overlay.addEventListener('click', () => triggerStart());
+    overlay.addEventListener('touchstart', (e) => { e.preventDefault(); triggerStart(); });
+
+    // Touch D-Pad Binding
+    function bindTouchBtn(id, dirName) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const handler = (e) => {
+        e.preventDefault();
+        sound.init();
+        pacman.nextDir = DIRS[dirName];
+      };
+      el.addEventListener('click', handler);
+      el.addEventListener('touchstart', handler);
+    }
+
+    bindTouchBtn('btnUp', 'UP');
+    bindTouchBtn('btnDown', 'DOWN');
+    bindTouchBtn('btnLeft', 'LEFT');
+    bindTouchBtn('btnRight', 'RIGHT');
+
+    // Keyboard Listeners
     window.addEventListener('keydown', (e) => {
       sound.init();
       switch (e.key) {
@@ -484,16 +512,9 @@
       }
     });
 
-    function handleMobileMove(dirName) {
-      sound.init();
-      pacman.nextDir = DIRS[dirName];
-    }
-
-    // Pac-Man Movement Update
     function updatePacman(spdMult) {
       const speed = pacman.baseSpeed * spdMult;
 
-      // Try turning if nextDir is valid
       const currentTileX = Math.floor((pacman.x + TILE_SIZE / 2) / TILE_SIZE);
       const currentTileY = Math.floor((pacman.y + TILE_SIZE / 2) / TILE_SIZE);
       const tileCenterX = currentTileX * TILE_SIZE + TILE_SIZE / 2;
@@ -506,15 +527,4 @@
         const nextTileY = currentTileY + pacman.nextDir.y;
 
         if (isWalkable(nextTileX, nextTileY)) {
-          pacman.dir = pacman.nextDir;
-          pacman.x = tileCenterX - TILE_SIZE / 2;
-          pacman.y = tileCenterY - TILE_SIZE / 2;
-        }
-      }
-
-      // Check if straight ahead is walkable
-      const targetTileX = Math.floor((pacman.x + TILE_SIZE / 2 + pacman.dir.x * (TILE_SIZE / 2 + 1)) / TILE_SIZE);
-      const targetTileY = Math.floor((pacman.y + TILE_SIZE / 2 + pacman.dir.y * (TILE_SIZE / 2 + 1)) / TILE_SIZE);
-
-      if (isWalkable(targetTileX, targetTileY)) {
-        pacman.x += 
+  
